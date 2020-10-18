@@ -1,0 +1,41 @@
+import os
+import glob
+
+#To run on cluster:
+#snakemake --cluster "bsub -u /dev/null -q new-short -R rusage[mem=1024] -C 1 -G fleishman-wx-grp-lsf -o logs/{rule}.{wildcards}.out -e logs/{rule}.{wildcards}.err" --cores 1000 --snakefile relax.snk --configfile relax_config.yaml
+
+DIRS,PDBS,=glob_wildcards('in/{DIRS}/{PDBS}.pdb')
+
+targets=[]
+for i in range(len(DIRS)):
+    targets.append(f'relax/{DIRS[i]}/{PDBS[i]}.pdb')
+print(targets)
+
+localrules: select_best
+rule all:
+  input:
+    targets
+
+rule rosetta_relax:
+  input:
+    pdb='in/{D}/{A}.pdb'
+  output:
+    pdb=temporary('temp/{D}/{num}_{A}_0001.pdb')
+  params:
+    dir='temp/{D}'
+  run:
+    command = f'{config["rosetta_exec"]} -parser:protocol  {config["autocab_dir"]}/xmls/refine_Ag.xml -s {input.pdb}  @{config["autocab_dir"]}/flags/flags_refinement -out:prefix {params.dir}/{wildcards.num}_ -out:file:scorefile {params.dir}/{wildcards.A}.sc '
+    print(command)
+    os.system(command)
+
+rule select_best:
+  input:
+    pdb=expand('temp/{{D}}/{num}_{{A}}_0001.pdb', num=range(config["trajectories"]))
+  output:
+    pdb='relax/{D}/{A}.pdb'
+  params:
+    score='temp/{D}/{A}.sc'
+  run:
+    command = f'cp `python {config["flab_dir"]}/bin/rosetta/parse_scores.py --scorefile {params.score} --operations "sort total_score Asc cols description" | ' + "awk 'NR==2{print $0 \".pdb\"}'`"+" {out_pdb}".format(out_pdb=output.pdb)
+    print(command)
+    os.system(command)

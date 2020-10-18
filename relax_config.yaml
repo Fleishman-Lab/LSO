@@ -1,0 +1,4 @@
+rosetta_exec: '/home/labs/fleishman/sarel/bin/rosetta_scripts.default.linuxiccrelease'
+autocab_dir: '/home/labs/fleishman/sarel/FleishmanLab/AutoCAb/'
+flab_dir: '/home/labs/fleishman/sarel/FleishmanLab/flab/'
+trajectories: 10

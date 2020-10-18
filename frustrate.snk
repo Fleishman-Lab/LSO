@@ -1,0 +1,97 @@
+import os
+import glob
+import json
+import shutil
+from flab.rosetta.rosetta_output.resfile import unify_res_file
+
+#To run on cluster:
+#snakemake --cluster "bsub -u /dev/null -q new-short -R rusage[mem=1024] -C 1 -G fleishman-wx-grp-lsf -o logs/{rule}.{wildcards}.out -e logs/{rule}.{wildcards}.err" --cores 2000 --snakefile frustrate.snk --configfile frustrate_config.yaml --latency_wait 60
+
+DIRS,PDBS,=glob_wildcards('relax/{DIR}/{PDB}.pdb')
+targets=[]
+for i in range(len(DIRS)):
+    targets.append(f'pymol_scripts/{DIRS[i]}/{PDBS[i]}/load_struct.pml')
+#print(targets)
+
+localrules: pymol_scripts
+rule all:
+  input:
+    targets
+
+def count_residues(file):
+    res_num=0
+    pdb=open(file,'r')
+    for line in pdb.readlines():
+      fields=line.split()
+      if(len(fields)>2 and fields[0]=="ATOM" and fields[2]=="CA"):
+        res_num=res_num+1
+    return res_num
+
+def resfile_names(wildcards):
+    resnums=count_residues(f'relax/{wildcards.D}/{wildcards.P}.pdb')
+    list=[]
+    for res in range(1, resnums+1):
+        list.append(f'temp_resfiles/{wildcards.D}/{wildcards.P}/res_{res}')
+    return(list)
+
+def expand_resfile_names_with_thresholds(names,dir):
+    expanded_names=[]
+    for n in names:
+        for t in config['energy_cutoffs_rosetta']:
+            file_name=f'{dir}/{n}.{t}'
+            if(os.path.exists(file_name)):
+                expanded_names.append(file_name)
+    return(expanded_names)
+
+rule filter_scan:
+  input:
+    pdb='relax/{D}/{P}.pdb'
+  output:
+    resfile=touch('temp_resfiles/{D}/{P}/res_{pos}') #of the form: temp_resfiles/D/P/res_{pos}
+  run:
+    path=os.path.dirname(output.resfile)
+    pos=output.resfile.split('_')[-1]
+    command = f'{config["rosetta_exec"]} @flags/filterscan.flags -s {input.pdb} -script_vars current_res={pos} scores_path={path} files_path={path} resfiles_path={path}'
+    print(command)
+    os.system(command)
+
+rule unify_resfiles:
+    input:
+        resfile=resfile_names #of the form: temp_resfiles/D/P/res_{pos}
+    output:
+        touch('resfiles/{D}/{P}/designable_aa_resfile.done')
+    run:
+        curr_dir=os.getcwd()
+        resfiles_thresholds=expand_resfile_names_with_thresholds(input.resfile,curr_dir)
+        unify_res_file(resfiles_thresholds, pdb=f'{curr_dir}/relax/{wildcards.D}/{wildcards.P}.pdb', out_path=f'resfiles/{wildcards.D}/{wildcards.P}/')
+
+rule pymol_scripts:
+    input:
+        resfiles='resfiles/{D}/{P}/designable_aa_resfile.done'
+    output:
+        pymol_script='pymol_scripts/{D}/{P}/load_struct.pml'
+    run:
+        r=input.resfiles
+        target_resfile=r.split('.')[-2] + f'.{config["energy_cutoff_for_pymol"]}'
+        pymol_script_file=open(output.pymol_script,'w+')
+        pymol_script_file.write(f'load relax/{wildcards.D}/{wildcards.P}.pdb\nshow lines\nremove hydrogens\n')
+        with open(target_resfile,'r') as resfile:
+            for line in resfile.readlines():
+                fields=line.split()
+                if(len(fields)>2 and len(fields[-1])>=config['identities_at_frustrated_pos']):
+                    pymol_script_file.write(f'show sticks, {wildcards.P} AND chain {fields[1]} AND resi {fields[0]}\n')
+                    pymol_script_file.write(f'color yellow, {wildcards.P} AND chain {fields[1]} AND resi {fields[0]}\n')
+        pymol_script_file.write('color atomic, (not elem C)\n')
+        pymol_script_file.close()
+        pymol_master_script=open('pymol_scripts/master.pml','a')
+        pymol_master_script.write(f'load {output.pymol_script}\n')
+        pymol_master_script.close()
+
+onsuccess:
+    print('deleting unnecessary files in temp_resfiles.\n')
+    os.system('nohup find temp_resfiles/ -type f -not -name "*.log" -exec rm -f {} \;')
+    print('tarzipping this directory\n')
+    os.system('tar -cvf temp_resfiles.tar temp_resfiles')
+    os.system('gzip -f temp_resfiles.tar')
+    print('deleting the directory\n')
+    shutil.rmtree('temp_resfiles')
