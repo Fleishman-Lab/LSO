@@ -1,0 +1,2 @@
+# LSO
+local sequence optimality
