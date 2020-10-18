@@ -12,7 +12,7 @@ The frustration analysis has two steps:
 1. relax
 2. frustration
 
-1. put your PDB files in in/<my dir>/<PDB>.pdb.
+1. put your PDB files in in/"my dir"/<PDB>.pdb.
 2. Run the relax.snk relaxation procedure to relax the PDBs. This
    will result in a new directory, relax/<my dir>/<PDB>.pdb
 3. Run the frustrate.snk frustration analysis. This will result in several
