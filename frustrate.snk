@@ -5,7 +5,7 @@ import shutil
 from flab.rosetta.rosetta_output.resfile import unify_res_file
 
 #To run on cluster:
-#snakemake --cluster "bsub -u /dev/null -q new-short -R rusage[mem=1024] -C 1 -G fleishman-wx-grp-lsf -o logs/{rule}.{wildcards}.out -e logs/{rule}.{wildcards}.err" --cores 2000 --snakefile frustrate.snk --configfile frustrate_config.yaml --latency_wait 60
+#snakemake --cluster "bsub -u /dev/null -q new-short -R rusage[mem=1024] -C 1 -G fleishman-wx-grp-lsf -o logs/{rule}.{wildcards}.out -e logs/{rule}.{wildcards}.err" --cores 2000 --snakefile frustrate.snk --configfile frustrate_config.yaml --latency-wait 600
 
 DIRS,PDBS,=glob_wildcards('relax/{DIR}/{PDB}.pdb')
 targets=[]
